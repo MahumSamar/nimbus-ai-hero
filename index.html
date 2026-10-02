@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#020811" />
+  <title>Nimbus — your AI teammate</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #020811;
+      --text: #f4f7ff;
+      --muted: #a9b4cc;
+      --accent: #4aa8ff;
+      --gutter: clamp(16px, 4vw, 56px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); }
+    body {
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    .hero {
+      position: relative;
+      height: 100vh;
+      height: 100svh;
+      min-height: 560px;
+      overflow: hidden;
+      isolation: isolate;
+      background: var(--bg);
+      touch-action: pan-y;
+    }
+
+    /* ---------- background video ---------- */
+    .stage {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+    }
+    .stage video {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      /* behave like object-fit: cover, anchored to the bottom so the robot is never cropped */
+      width: max(100vw, calc(max(100svh, 560px) * 16 / 9));
+      height: auto;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity .8s ease;
+    }
+    .stage video.ready { opacity: 1; }
+    /* soft fade so any area above the video blends into the sky */
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(120% 70% at 50% 0%, rgba(2,8,17,.55) 0%, rgba(2,8,17,0) 60%);
+    }
+
+    /* ---------- nav ---------- */
+    .nav {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: clamp(16px, 3vw, 28px) var(--gutter);
+      z-index: 2;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      text-decoration: none;
+      font-family: "Inter Tight", sans-serif;
+      font-weight: 700;
+      font-size: clamp(18px, 2vw, 24px);
+      letter-spacing: -.01em;
+    }
+    .brand svg { width: clamp(30px, 3.2vw, 42px); height: auto; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      color: #050b16;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: clamp(13px, 1.1vw, 15px);
+      padding: 12px 22px;
+      border-radius: 999px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,.2), 0 8px 30px rgba(74,168,255,.18);
+      transition: transform .2s ease, box-shadow .2s ease;
+      white-space: nowrap;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 10px 40px rgba(74,168,255,.35); }
+
+    /* ---------- copy ---------- */
+    .copy {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: clamp(96px, 14vh, 130px) var(--gutter) 0;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-family: "Inter Tight", sans-serif;
+      font-weight: 800;
+      font-size: clamp(34px, 6.2vw, 86px);
+      line-height: .98;
+      letter-spacing: -.035em;
+      text-wrap: balance;
+      text-shadow: 0 2px 40px rgba(2,8,17,.6);
+    }
+    h1 span { display: block; }
+    .sub {
+      margin: clamp(14px, 2vh, 24px) auto 0;
+      max-width: 34em;
+      color: var(--muted);
+      font-size: clamp(15px, 1.45vw, 19px);
+      line-height: 1.55;
+      text-wrap: balance;
+    }
+
+    /* entrance */
+    .fade { opacity: 0; transform: translateY(14px); animation: in .9s cubic-bezier(.2,.7,.2,1) forwards; }
+    .d1 { animation-delay: .05s; } .d2 { animation-delay: .18s; } .d3 { animation-delay: .3s; }
+    @keyframes in { to { opacity: 1; transform: none; } }
+
+    /* ---------- mobile ---------- */
+    @media (max-width: 640px) {
+      .btn { padding: 10px 16px; }
+      .btn .long { display: none; }
+      .copy { padding-top: 110px; }
+    }
+    /* portrait: show the robot larger than "cover" would on a phone, still anchored bottom */
+    @media (max-aspect-ratio: 4/5) {
+      .stage video { width: max(230vw, calc(62svh * 16 / 9)); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fade { animation: none; opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <section class="hero" id="hero">
+    <div class="stage" aria-hidden="true">
+      <video id="robot" poster="https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/a2a8136a-5d2e-4f3c-bf46-342fd249e9bd.jpg" muted playsinline preload="auto" disablepictureinpicture></video>
+    </div>
+
+    <nav class="nav">
+      <a class="brand" href="#" aria-label="Nimbus home">
+        <svg viewBox="0 0 44 30" fill="none" aria-hidden="true">
+          <path d="M12 27h21a8 8 0 0 0 1.2-15.9A11 11 0 0 0 13.4 9.3 9 9 0 0 0 12 27Z" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+        </svg>
+        Nimbus
+      </a>
+      <a class="btn" href="#">Add to <span class="long">your&nbsp;</span>workspace</a>
+    </nav>
+
+    <div class="copy">
+      <h1 class="fade d1"><span>Meet Nimbus,</span><span>your AI teammate.</span></h1>
+      <p class="sub fade d2">Nimbus floats through your team chat, answering questions, summarizing threads, and handling the busywork.</p>
+    </div>
+  </section>
+
+  <script>
+    (() => {
+      const video = document.getElementById('robot');
+      const hero = document.getElementById('hero');
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // 720p for phones / small screens, 1080p otherwise
+      const small = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) < 1600 || window.innerWidth < 768;
+      const SRC = small
+        ? 'https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/2a68c150-e0bd-48ac-8f36-9d801a194f22.mp4'
+        : 'https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/f5dd1a14-c204-49d2-bc3e-81b882cc5055.mp4';
+
+      // Pull the whole clip from the Higgsfield CDN into memory once, so every scrub seek is instant
+      // (no range request per seek). Falls back to streaming the URL directly if fetch fails.
+      fetch(SRC)
+        .then((r) => { if (!r.ok) throw 0; return r.blob(); })
+        .then((b) => { video.src = URL.createObjectURL(b); })
+        .catch(() => { video.src = SRC; });
+
+      let duration = 0;
+      let target = 0;      // 0 = looking left, 1 = looking right
+      let current = 0;
+      let lastInput = 0;
+      let lastSet = -1;
+
+      const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+      // Pointer → target (works for mouse, pen and touch)
+      const setFromX = (clientX) => {
+        const r = hero.getBoundingClientRect();
+        target = clamp((clientX - r.left) / r.width, 0, 1);
+        lastInput = performance.now();
+      };
+      window.addEventListener('pointermove', (e) => setFromX(e.clientX), { passive: true });
+      window.addEventListener('touchmove', (e) => e.touches[0] && setFromX(e.touches[0].clientX), { passive: true });
+      window.addEventListener('touchstart', (e) => e.touches[0] && setFromX(e.touches[0].clientX), { passive: true });
+
+      const start = () => {
+        duration = video.duration || 4;
+        video.pause();
+        video.currentTime = 0;
+        video.classList.add('ready');
+        target = 0.5; current = 0;           // ease from left to center on load
+        requestAnimationFrame(tick);
+      };
+
+      // Scrub: the video is never "played" — currentTime follows the pointer.
+      // Moving right advances frames, moving left goes back, so it reads as forward/backward playback.
+      const tick = (now) => {
+        // idle sway on touch / no pointer so the robot still feels alive
+        if (!reduce && now - lastInput > 3500 && matchMedia('(hover: none)').matches) {
+          target = 0.5 + Math.sin(now / 1800) * 0.42;
+        }
+
+        current += (target - current) * (reduce ? 1 : 0.085);
+        if (Math.abs(target - current) < 0.0005) current = target;
+
+        const t = clamp(current, 0, 1) * (duration - 0.05);
+        if (!video.seeking && Math.abs(t - lastSet) > 0.004) {
+          video.currentTime = t;
+          lastSet = t;
+        }
+        requestAnimationFrame(tick);
+      };
+
+      if (video.readyState >= 1) start();
+      else video.addEventListener('loadedmetadata', start, { once: true });
+
+      // iOS sometimes needs a decode kick before seeking renders frames
+      video.addEventListener('loadeddata', () => {
+        const p = video.play();
+        if (p && p.then) p.then(() => video.pause()).catch(() => {});
+      }, { once: true });
+    })();
+  </script>
+</body>
+</html>
