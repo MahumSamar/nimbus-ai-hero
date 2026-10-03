@@ -156,7 +156,7 @@
 <body>
   <section class="hero" id="hero">
     <div class="stage" aria-hidden="true">
-      <video id="robot" poster="https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/3fa3bdf2-233d-40fe-b028-dd6cd654f909.jpg" muted playsinline preload="auto" disablepictureinpicture></video>
+      <video id="robot" poster="https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/53636b7c-5ee8-4264-9bab-0801e6b777ea.jpg" muted playsinline preload="auto" disablepictureinpicture></video>
     </div>
 
     <nav class="nav">
@@ -181,23 +181,23 @@
       const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
       const mobileMq = matchMedia('(max-width: 700px), (hover: none)');
 
-      // The clip is a 4s seamless loop (96 frames @ 24fps, every frame a keyframe). The head, visor and
-      // eye rings never move: only the pupils roll one full clockwise circle (up → right → down → left → up).
+      // The clip is a seamless loop of 33 frames @ 24fps (every frame a keyframe, no interpolated frames).
+      // The head, visor and eye rings never move: both pupils roll together through one clockwise circle.
       const CDN = 'https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/';
-      const SRC_1080 = CDN + 'a6754e43-b755-4858-93ab-bf470232464f.mp4';
-      const SRC_720  = CDN + 'ca3d57b6-69b3-44ae-baf5-ab0dc31c451b.mp4';
+      const SRC_1080 = CDN + '164375f2-5bb8-4353-b8b6-bf9e6d4b4daf.mp4';
+      const SRC_720  = CDN + 'e45eca8b-2c24-4aa4-a36b-95ae5d04d533.mp4';
       const small = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) < 1600 || window.innerWidth < 768;
       const SRC = small ? SRC_720 : SRC_1080;
 
-      const FPS = 24, FRAMES = 96;
+      const FPS = 24, FRAMES = 33;
       const VIDEO_W = 1920;
-      const EYE_X = 958, EYE_Y = 702;        // centre between the eyes, in source-video pixels
+      const EYE_X = 958, EYE_Y = 700;        // centre between the eyes, in source-video pixels
 
       // Calibration: [frame, gaze angle in degrees] anchors measured from the clip.
       // Angle uses screen coordinates (0° = right, 90° = down, 180° = left, 270° = up), unwrapped so it only increases.
-      const ANCHORS = [[0,288],[4,292],[8,331.9],[12,350.1],[16,378.9],[20,384.5],[24,401.4],[28,409.2],[32,428.9],[36,435.3],
-        [40,446.6],[44,450.2],[48,467.5],[52,473.4],[56,486.4],[60,491.5],[64,509.1],[68,513.5],[72,540],[76,550.8],
-        [80,592.4],[84,605.1],[88,623.9],[92,633.2],[96,648]];
+      const ANCHORS = [6.8,16.6,26.3,35.5,50.9,63.2,73,82.5,100.2,111.1,121.8,130.9,147.8,157.3,167,175.6,192.9,202.1,
+        212.6,222.9,240.7,250.4,261,270.1,284.7,293.5,301.6,309.5,324.2,331.6,340.2,347.8,361.6,366.8]
+        .map((deg, f) => [f, deg]);
       const TAU = Math.PI * 2;
       const SAMPLES = [];                    // [angle (0..2π), frame] for every frame
       for (let f = 0, k = 0; f < FRAMES; f++) {
@@ -207,10 +207,8 @@
         SAMPLES.push([(deg % 360) * Math.PI / 180, f]);
       }
 
-      // A few interpolated in-between frames are smeared (where the source pupils jump far between frames).
-      // CLEAN maps every frame to the nearest clean one so those are never shown while scrubbing.
+      // Every frame of this clip is clean, so CLEAN is an identity map (kept as a hook for skipping frames).
       const CLEAN = Array.from({ length: FRAMES }, (_, f) => f);
-      Object.assign(CLEAN, { 5: 4, 6: 8, 7: 8, 77: 76, 78: 80, 79: 80, 93: 92, 94: 0, 95: 0 });
 
       let pointer = null;                    // last pointer position
       let targetFrame = 0;                   // frame whose gaze points at the cursor
@@ -265,7 +263,7 @@
         if (isMobile()) {
           video.loop = true;
           if (reduceMq.matches) video.pause();
-          else { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+          else { video.playbackRate = 0.35; const p = video.play(); if (p && p.catch) p.catch(() => {}); }
         } else {
           video.loop = false;
           video.pause();
