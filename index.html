@@ -156,7 +156,7 @@
 <body>
   <section class="hero" id="hero">
     <div class="stage" aria-hidden="true">
-      <video id="robot" poster="https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/a2a8136a-5d2e-4f3c-bf46-342fd249e9bd.jpg" muted playsinline preload="auto" disablepictureinpicture></video>
+      <video id="robot" poster="https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/3fa3bdf2-233d-40fe-b028-dd6cd654f909.jpg" muted playsinline preload="auto" disablepictureinpicture></video>
     </div>
 
     <nav class="nav">
@@ -178,76 +178,128 @@
   <script>
     (() => {
       const video = document.getElementById('robot');
-      const hero = document.getElementById('hero');
-      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const reduceMq = matchMedia('(prefers-reduced-motion: reduce)');
+      const mobileMq = matchMedia('(max-width: 700px), (hover: none)');
 
-      // 720p for phones / small screens, 1080p otherwise
+      // The clip is a 4s seamless loop (96 frames @ 24fps, every frame a keyframe). The head, visor and
+      // eye rings never move: only the pupils roll one full clockwise circle (up → right → down → left → up).
+      const CDN = 'https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/';
+      const SRC_1080 = CDN + 'a6754e43-b755-4858-93ab-bf470232464f.mp4';
+      const SRC_720  = CDN + 'ca3d57b6-69b3-44ae-baf5-ab0dc31c451b.mp4';
       const small = Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1) < 1600 || window.innerWidth < 768;
-      const SRC = small
-        ? 'https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/2a68c150-e0bd-48ac-8f36-9d801a194f22.mp4'
-        : 'https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/f5dd1a14-c204-49d2-bc3e-81b882cc5055.mp4';
+      const SRC = small ? SRC_720 : SRC_1080;
 
-      // Pull the whole clip from the Higgsfield CDN into memory once, so every scrub seek is instant
+      const FPS = 24, FRAMES = 96;
+      const VIDEO_W = 1920;
+      const EYE_X = 958, EYE_Y = 702;        // centre between the eyes, in source-video pixels
+
+      // Calibration: [frame, gaze angle in degrees] anchors measured from the clip.
+      // Angle uses screen coordinates (0° = right, 90° = down, 180° = left, 270° = up), unwrapped so it only increases.
+      const ANCHORS = [[0,288],[4,292],[8,331.9],[12,350.1],[16,378.9],[20,384.5],[24,401.4],[28,409.2],[32,428.9],[36,435.3],
+        [40,446.6],[44,450.2],[48,467.5],[52,473.4],[56,486.4],[60,491.5],[64,509.1],[68,513.5],[72,540],[76,550.8],
+        [80,592.4],[84,605.1],[88,623.9],[92,633.2],[96,648]];
+      const TAU = Math.PI * 2;
+      const SAMPLES = [];                    // [angle (0..2π), frame] for every frame
+      for (let f = 0, k = 0; f < FRAMES; f++) {
+        while (ANCHORS[k + 1][0] < f) k++;
+        const [f0, d0] = ANCHORS[k], [f1, d1] = ANCHORS[k + 1];
+        const deg = d0 + (d1 - d0) * (f - f0) / (f1 - f0);
+        SAMPLES.push([(deg % 360) * Math.PI / 180, f]);
+      }
+
+      // A few interpolated in-between frames are smeared (where the source pupils jump far between frames).
+      // CLEAN maps every frame to the nearest clean one so those are never shown while scrubbing.
+      const CLEAN = Array.from({ length: FRAMES }, (_, f) => f);
+      Object.assign(CLEAN, { 5: 4, 6: 8, 7: 8, 77: 76, 78: 80, 79: 80, 93: 92, 94: 0, 95: 0 });
+
+      let pointer = null;                    // last pointer position
+      let targetFrame = 0;                   // frame whose gaze points at the cursor
+      let pos = 0;                           // smoothed playhead, in frames, on the loop
+      let lastSet = -1;
+      let ready = false;
+
+      const isMobile = () => mobileMq.matches;
+
+      // Cursor → angle around the robot's eyes → closest calibrated frame
+      const retarget = () => {
+        if (!pointer || isMobile()) return;
+        const rect = video.getBoundingClientRect();
+        const scale = rect.width / VIDEO_W;
+        const eyeX = rect.left + EYE_X * scale;
+        const eyeY = rect.top + EYE_Y * scale;
+        const dx = pointer.x - eyeX, dy = pointer.y - eyeY;
+        if (Math.hypot(dx, dy) < 8) return;  // ignore the dead centre
+        let angle = Math.atan2(dy, dx);
+        if (angle < 0) angle += TAU;
+        let best = 0, bestDist = Infinity;
+        for (const [a, f] of SAMPLES) {
+          let dist = Math.abs(a - angle);
+          if (dist > Math.PI) dist = TAU - dist;   // circular distance
+          if (dist < bestDist) { bestDist = dist; best = f; }
+        }
+        targetFrame = best;
+      };
+
+      // Scrub loop: the video is never played on desktop. The playhead glides along the loop
+      // (taking the shorter way round, wrapping end → start) toward the target frame.
+      const tick = () => {
+        if (ready && !isMobile()) {
+          let delta = targetFrame - pos;
+          if (delta > FRAMES / 2) delta -= FRAMES;
+          if (delta < -FRAMES / 2) delta += FRAMES;
+          pos += delta * (reduceMq.matches ? 1 : 0.12);
+          pos = ((pos % FRAMES) + FRAMES) % FRAMES;
+          const maxT = (video.duration || FRAMES / FPS) - 1 / FPS;
+          const t = Math.min((CLEAN[Math.round(pos) % FRAMES]) / FPS + 1 / 240, maxT);
+          if (!video.seeking && Math.abs(t - lastSet) > 1 / 48) {
+            video.currentTime = t;
+            lastSet = t;
+          }
+        }
+        requestAnimationFrame(tick);
+      };
+
+      // Desktop: paused + cursor scrubbing. Mobile / touch: the loop simply plays.
+      const applyMode = () => {
+        if (!ready) return;
+        if (isMobile()) {
+          video.loop = true;
+          if (reduceMq.matches) video.pause();
+          else { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+        } else {
+          video.loop = false;
+          video.pause();
+          pos = (video.currentTime * FPS) % FRAMES;
+          lastSet = -1;
+          retarget();
+        }
+      };
+
+      window.addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; retarget(); }, { passive: true });
+      let wasMobile = isMobile();
+      window.addEventListener('resize', () => {
+        if (isMobile() !== wasMobile) { wasMobile = isMobile(); applyMode(); }
+        retarget();
+      });
+      window.addEventListener('scroll', retarget, { passive: true });
+      window.addEventListener('pageshow', applyMode);
+      mobileMq.addEventListener('change', applyMode);
+      reduceMq.addEventListener('change', applyMode);
+
+      video.addEventListener('loadeddata', () => {
+        ready = true;
+        video.classList.add('ready');
+        applyMode();
+      }, { once: true });
+
+      // Pull the whole clip from the Higgsfield CDN into memory once so every seek is instant
       // (no range request per seek). Falls back to streaming the URL directly if fetch fails.
       fetch(SRC)
         .then((r) => { if (!r.ok) throw 0; return r.blob(); })
         .then((b) => { video.src = URL.createObjectURL(b); })
         .catch(() => { video.src = SRC; });
 
-      let duration = 0;
-      let target = 0;      // 0 = looking left, 1 = looking right
-      let current = 0;
-      let lastInput = 0;
-      let lastSet = -1;
-
-      const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-
-      // Pointer → target (works for mouse, pen and touch)
-      const setFromX = (clientX) => {
-        const r = hero.getBoundingClientRect();
-        target = clamp((clientX - r.left) / r.width, 0, 1);
-        lastInput = performance.now();
-      };
-      window.addEventListener('pointermove', (e) => setFromX(e.clientX), { passive: true });
-      window.addEventListener('touchmove', (e) => e.touches[0] && setFromX(e.touches[0].clientX), { passive: true });
-      window.addEventListener('touchstart', (e) => e.touches[0] && setFromX(e.touches[0].clientX), { passive: true });
-
-      const start = () => {
-        duration = video.duration || 4;
-        video.pause();
-        video.currentTime = 0;
-        video.classList.add('ready');
-        target = 0.5; current = 0;           // ease from left to center on load
-        requestAnimationFrame(tick);
-      };
-
-      // Scrub: the video is never "played" — currentTime follows the pointer.
-      // Moving right advances frames, moving left goes back, so it reads as forward/backward playback.
-      const tick = (now) => {
-        // idle sway on touch / no pointer so the robot still feels alive
-        if (!reduce && now - lastInput > 3500 && matchMedia('(hover: none)').matches) {
-          target = 0.5 + Math.sin(now / 1800) * 0.42;
-        }
-
-        current += (target - current) * (reduce ? 1 : 0.085);
-        if (Math.abs(target - current) < 0.0005) current = target;
-
-        const t = clamp(current, 0, 1) * (duration - 0.05);
-        if (!video.seeking && Math.abs(t - lastSet) > 0.004) {
-          video.currentTime = t;
-          lastSet = t;
-        }
-        requestAnimationFrame(tick);
-      };
-
-      if (video.readyState >= 1) start();
-      else video.addEventListener('loadedmetadata', start, { once: true });
-
-      // iOS sometimes needs a decode kick before seeking renders frames
-      video.addEventListener('loadeddata', () => {
-        const p = video.play();
-        if (p && p.then) p.then(() => video.pause()).catch(() => {});
-      }, { once: true });
+      requestAnimationFrame(tick);
     })();
   </script>
 </body>
